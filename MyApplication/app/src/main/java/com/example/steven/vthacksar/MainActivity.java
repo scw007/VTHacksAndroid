@@ -1,81 +1,139 @@
 package com.example.steven.vthacksar;
 
+import android.graphics.Bitmap;
+import android.hardware.Camera;
+import android.os.AsyncTask;
 import android.os.Bundle;
-import android.view.Menu;
-import android.view.MenuItem;
+import android.util.Log;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
+import android.view.View;
+import android.widget.Button;
 
 import com.google.vrtoolkit.cardboard.CardboardActivity;
-import com.google.vrtoolkit.cardboard.CardboardView;
-import com.google.vrtoolkit.cardboard.Eye;
-import com.google.vrtoolkit.cardboard.HeadTransform;
-import com.google.vrtoolkit.cardboard.Viewport;
 
-import javax.microedition.khronos.egl.EGLConfig;
+import com.example.steven.vthacksar.Core.CameraEngine;
+import com.example.steven.vthacksar.Core.ExtraViews.FocusBoxView;
+import com.example.steven.vthacksar.Core.Imaging.Tools;
+import com.example.steven.vthacksar.Core.TessTool.TessAsyncEngine;
 
 
-public class MainActivity extends CardboardActivity implements CardboardView.StereoRenderer{
+public class MainActivity extends CardboardActivity implements SurfaceHolder.Callback, View.OnClickListener,
+        Camera.PictureCallback, Camera.ShutterCallback {
+
+    static final String TAG = "DBG_" + MainActivity.class.getName();
+
+    Button shutterButton;
+    Button focusButton;
+    FocusBoxView focusBox;
+    SurfaceView cameraFrame;
+    CameraEngine cameraEngine;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        //setContentView(R.layout.common_ui);
-        CardboardView cardboardView = (CardboardView) findViewById(R.id.cardboard_view);
-        cardboardView.setRestoreGLStateEnabled(false);
-        cardboardView.setRenderer(this);
-        setCardboardView(cardboardView);
-    }
-
-
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        // Inflate the menu; this adds items to the action bar if it is present.
-        getMenuInflater().inflate(R.menu.menu_main, menu);
-        return true;
     }
 
     @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        // Handle action bar item clicks here. The action bar will
-        // automatically handle clicks on the Home/Up button, so long
-        // as you specify a parent activity in AndroidManifest.xml.
-        int id = item.getItemId();
+    public void surfaceCreated(SurfaceHolder holder) {
 
-        //noinspection SimplifiableIfStatement
-        if (id == R.id.action_settings) {
-            return true;
+        Log.d(TAG, "Surface Created - starting camera");
+
+        if (cameraEngine != null && !cameraEngine.isOn()) {
+            cameraEngine.start();
         }
 
-        return super.onOptionsItemSelected(item);
+        if (cameraEngine != null && cameraEngine.isOn()) {
+            Log.d(TAG, "Camera engine already on");
+            return;
+        }
+
+        cameraEngine = CameraEngine.New(holder);
+        cameraEngine.start();
+
+        Log.d(TAG, "Camera engine started");
     }
 
     @Override
-    public void onNewFrame(HeadTransform headTransform) {
-        ///headTransform.getHeadView(headView, 0);
-    }
-
-    @Override
-    public void onDrawEye(Eye eye) {
-
-    }
-
-    @Override
-    public void onFinishFrame(Viewport viewport) {
+    public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
 
     }
 
     @Override
-    public void onSurfaceChanged(int i, int i2) {
+    public void surfaceDestroyed(SurfaceHolder holder) {
 
     }
 
     @Override
-    public void onSurfaceCreated(EGLConfig eglConfig) {
+    protected void onResume() {
+        super.onResume();
+
+        cameraFrame = (SurfaceView) findViewById(R.id.camera_frame);
+        shutterButton = (Button) findViewById(R.id.shutter_button);
+        focusBox = (FocusBoxView) findViewById(R.id.focus_box);
+        focusButton = (Button) findViewById(R.id.focus_button);
+
+        shutterButton.setOnClickListener(this);
+        focusButton.setOnClickListener(this);
+
+        SurfaceHolder surfaceHolder = cameraFrame.getHolder();
+        surfaceHolder.addCallback(this);
+        surfaceHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
+
+        cameraFrame.setOnClickListener(this);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+
+        if (cameraEngine != null && cameraEngine.isOn()) {
+            cameraEngine.stop();
+        }
+
+        SurfaceHolder surfaceHolder = cameraFrame.getHolder();
+        surfaceHolder.removeCallback(this);
+    }
+
+    @Override
+    public void onClick(View v) {
+        if(v == shutterButton){
+            if(cameraEngine != null && cameraEngine.isOn()){
+                cameraEngine.takeShot(this, this, this);
+            }
+        }
+
+        if(v == focusButton){
+            if(cameraEngine!=null && cameraEngine.isOn()){
+                cameraEngine.requestFocus();
+            }
+        }
+    }
+
+    @Override
+    public void onPictureTaken(byte[] data, Camera camera) {
+
+        Log.d(TAG, "Picture taken");
+
+        if (data == null) {
+            Log.d(TAG, "Got null data");
+            return;
+        }
+
+        Bitmap bmp = Tools.getFocusedBitmap(this, camera, data, focusBox.getBox());
+
+        Log.d(TAG, "Got bitmap");
+
+        Log.d(TAG, "Initialization of TessBaseApi");
+
+        new TessAsyncEngine().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, this, bmp);
 
     }
 
     @Override
-    public void onRendererShutdown() {
+    public void onShutter() {
 
     }
+
 }
